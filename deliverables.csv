@@ -1,0 +1,9 @@
+deliverable_id,project_id,deliverable_name,start_date,end_date,status,priority,delivery_mode,protected_delivery,notes
+1,1,Primary Delivery,2026-03-01,2026-06-30,In Progress,High,Standard,No,
+6,2,Planned Entity Management,2026-04-20,2026-05-22,Planned,High,Standard,No,
+7,2,Planned Entity Management,2026-04-20,2026-05-22,Planned,Medium,Standard,No,
+2,2,Primary Delivery,2026-04-20,2026-07-31,Planned,Medium,Standard,No,
+3,3,Primary Delivery,2026-04-20,2026-08-28,Planned,High,Standard,No,
+4,4,Primary Delivery,2026-04-20,2026-06-20,Planned,Low,Standard,No,
+5,5,Primary Delivery,2026-03-09,2026-04-24,In Progress,High,Standard,No,
+8,2,Planned Entity Management,2026-04-20,2026-05-22,Planned,Medium,Standard,No,
