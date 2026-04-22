@@ -34,5 +34,5 @@ For every change:
 - If push fails, report error and stop
 - Do NOT skip steps
 - Treat `app.py` as the primary app unless explicitly told otherwise
-- Do not overwrite `app_reconstructed.py` unless explicitly asked
+- Treat `app_legacy.py` as a deprecated archive unless explicitly asked to modify it
 - Do not remove working functionality without approval

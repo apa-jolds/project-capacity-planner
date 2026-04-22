@@ -2,7 +2,7 @@
 
 Project Capacity Planner is a Streamlit app for evaluating whether a portfolio of planned work fits within the available team capacity.
 
-The current primary app is `app.py`. It models project-level capacity using project records plus resource allocations, then highlights overload, likely schedule slip, and estimated FTE gap.
+The current primary app is `app.py`. It is the standardized deliverable-centric application and models capacity from projects, deliverables, and resource allocations, then highlights overload, likely schedule slip, and estimated FTE gap.
 
 ## What The App Answers
 
@@ -15,33 +15,33 @@ The current primary app is `app.py`. It models project-level capacity using proj
 ## Current App Entry Point
 
 - Primary app: `app.py`
-- Alternate reconstruction reference: `app_reconstructed.py`
+- Archived legacy app: `app_legacy.py`
 
-Unless explicitly directed otherwise, treat `app.py` as the active application.
+Unless explicitly directed otherwise, treat `app.py` as the active application and `app_legacy.py` as a deprecated reference.
 
 ## Data Files
 
 The app reads local CSV files in the repo root:
 
-- `projects.csv`: project metadata, dates, remaining hours, priority, and owner
-- `allocations.csv`: resource-to-project allocation percentages
-- `deliverables.csv`: legacy or reconstruction-supporting deliverable schedule data
+- `projects.csv`: project metadata such as owner, priority, status, and notes
+- `deliverables.csv`: deliverable schedule data with start/end dates and status
+- `allocations.csv`: resource-to-deliverable allocation percentages
 
 ## Main Features In `app.py`
 
 - Executive dashboard with portfolio feasibility KPIs
-- Resource capacity summary with weekly load status
+- Filterable deliverable timeline view
 - Project rollup summary with realistic end-date projections
+- Resource capacity summary with weekly load status
 - Staffing insight showing weekly overage and estimated FTE gap
-- Editable Projects and Allocations tables using Streamlit data editors
-- CSV-backed save flow for projects and allocations
+- Read-only analysis built from the existing CSVs
 
 ## Capacity Assumptions
 
 - Base capacity: `45` hours per week per resource
 - Default contingency: `10%`
 - Effective capacity formula: `45 * (1 - contingency)`
-- Timelines expand when modeled demand exceeds effective capacity
+- Deliverable timelines expand when modeled demand exceeds effective capacity
 
 ## Run Locally
 
@@ -60,5 +60,5 @@ streamlit run app.py
 ## Repository Notes
 
 - `app.py` is the working app to preserve unless a task explicitly says otherwise.
-- `app_reconstructed.py` is a separate reconstruction artifact and should not be overwritten without explicit instruction.
+- `app_legacy.py` preserves the previous project-level implementation and should only be modified if a task explicitly targets it.
 - Documentation and workflow expectations are tracked in `AGENTS.md` and `CURRENT_STATE.md`.

@@ -1,4 +1,4 @@
-# Project Capacity Planner – Context
+# Project Capacity Planner - Context
 
 ## Purpose
 This application is a capacity planning and portfolio feasibility tool.
@@ -8,7 +8,7 @@ It answers:
 - If not:
   - Who is overloaded?
   - What work exceeds capacity?
-  - Which projects slip?
+  - Which deliverables or projects slip?
   - How far do timelines extend?
   - What FTE is required?
 
@@ -17,27 +17,40 @@ It answers:
 ## Core Concepts
 
 ### Projects
-Define scope and timeline:
+Define parent containers and ownership:
 - project_id
 - project_name
+- owner
+- priority
+- status
+- notes
+
+---
+
+### Deliverables
+Define the schedulable work units used by the active app:
+- deliverable_id
+- project_id
+- deliverable_name
 - start_date
 - end_date
-- priority
-- owner
-- progress_pct
 - status
+- priority
+- delivery_mode
+- protected_delivery
+- notes
 
 ---
 
 ### Resource Allocations
 Each row:
 - allocation_id
-- project_id
+- deliverable_id
 - resource_name
 - allocation_pct
 
 Rules:
-- Many-to-many (resources ↔ projects)
+- Many-to-many (resources <-> deliverables)
 - allocation_pct = % of capacity
 
 ---
@@ -58,11 +71,11 @@ Effective capacity:
 
 ## Core Calculations
 
+### Deliverable Hours
+business_days(start_date, end_date) * 9
+
 ### Weekly Load %
 required_weekly_hours / effective_weekly_capacity
-
-### Checkpoint Utilization %
-demand_hours_to_checkpoint / available_hours_to_checkpoint
 
 ### FTE Gap
 weekly_overage / effective_weekly_capacity
@@ -81,7 +94,7 @@ Timeline expands
 
 1. Is the portfolio feasible?
 2. Who is overloaded?
-3. What slips?
+3. Which deliverables or projects slip?
 4. Why?
 5. What is the FTE gap?
 
@@ -93,16 +106,16 @@ Timeline expands
 - Strong hierarchy
 - No clutter
 - Consistent dark theme
-- Tooltips for clarity
+- Read-only analytical views over the current CSVs
 
 ---
 
-## Allocations UX
+## Current UI
 
-- Editable table
-- Inline edits
-- Save to CSV
-- Add/delete rows
+- Filterable timeline view
+- Project rollup summary
+- Resource capacity summary
+- Staffing insight
 
 ---
 
