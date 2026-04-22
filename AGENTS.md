@@ -33,3 +33,6 @@ For every change:
 - Always push after successful commit
 - If push fails, report error and stop
 - Do NOT skip steps
+- Treat `app.py` as the primary app unless explicitly told otherwise
+- Do not overwrite `app_reconstructed.py` unless explicitly asked
+- Do not remove working functionality without approval
