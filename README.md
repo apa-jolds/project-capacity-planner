@@ -34,7 +34,7 @@ The app reads local CSV files in the repo root:
 - Project rollup summary with realistic end-date projections
 - Resource capacity summary with weekly load status
 - Staffing insight showing weekly overage and estimated FTE gap
-- Read-only analysis built from the existing CSVs
+- Editable Projects, Deliverables, and Allocations management tabs with CSV save actions
 
 ## Capacity Assumptions
 

@@ -116,6 +116,7 @@ Timeline expands
 - Project rollup summary
 - Resource capacity summary
 - Staffing insight
+- Editable Projects, Deliverables, and Allocations tabs
 
 ---
 

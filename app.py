@@ -68,6 +68,11 @@ def parse_date_value(value: object) -> date | None:
     return None if pd.isna(parsed) else parsed.date()
 
 
+def format_date_for_csv(value: object) -> str:
+    parsed = parse_date_value(value)
+    return "" if parsed is None else parsed.isoformat()
+
+
 def business_days(start_value: object, end_value: object) -> int:
     start_date = parse_date_value(start_value)
     end_date = parse_date_value(end_value)
@@ -125,6 +130,11 @@ def capacity_status(load_pct: float) -> str:
     if load_pct >= 0.85:
         return "Near capacity"
     return "Available"
+
+
+def next_id(df: pd.DataFrame, column: str) -> int:
+    series = pd.to_numeric(df.get(column), errors="coerce").dropna() if column in df.columns else pd.Series(dtype=float)
+    return 1 if series.empty else int(series.max()) + 1
 
 
 def inject_css() -> None:
@@ -264,6 +274,85 @@ def load_deliverables() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_allocations() -> pd.DataFrame:
     return normalize_allocations(pd.read_csv(ALLOCATIONS_PATH) if ALLOCATIONS_PATH.exists() else pd.DataFrame(columns=ALLOCATION_COLUMNS))
+
+
+def save_projects(df: pd.DataFrame) -> None:
+    normalize_projects(df).to_csv(PROJECTS_PATH, index=False)
+
+
+def save_deliverables(df: pd.DataFrame) -> None:
+    out = normalize_deliverables(df).copy()
+    out["start_date"] = out["start_date"].apply(format_date_for_csv)
+    out["end_date"] = out["end_date"].apply(format_date_for_csv)
+    out.to_csv(DELIVERABLES_PATH, index=False)
+
+
+def save_allocations(df: pd.DataFrame) -> None:
+    normalize_allocations(df).to_csv(ALLOCATIONS_PATH, index=False)
+
+
+def assign_missing_ids(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    out = df.copy()
+    missing_ids = pd.to_numeric(out[column], errors="coerce").fillna(0) <= 0
+    if missing_ids.any():
+        next_value = next_id(out.loc[~missing_ids], column)
+        for idx in out.index[missing_ids]:
+            out.at[idx, column] = next_value
+            next_value += 1
+    return out
+
+
+def initialize_editor_state(key: str, df: pd.DataFrame) -> None:
+    if key not in st.session_state:
+        st.session_state[key] = df.copy()
+
+
+def set_editor_state(key: str, widget_key: str, df: pd.DataFrame) -> None:
+    st.session_state[key] = df.copy()
+    if widget_key in st.session_state:
+        del st.session_state[widget_key]
+
+
+def render_table_editor(
+    tab,
+    *,
+    title: str,
+    editor_state_key: str,
+    widget_key: str,
+    df: pd.DataFrame,
+    columns: list[str],
+    id_column: str,
+    save_fn,
+    column_config: dict[str, object],
+) -> None:
+    initialize_editor_state(editor_state_key, df)
+    with tab:
+        st.markdown(f'<div class="section-label">{escape(title)}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        edited_df = st.data_editor(
+            st.session_state[editor_state_key],
+            key=widget_key,
+            width="stretch",
+            height=460,
+            hide_index=True,
+            num_rows="dynamic",
+            column_config=column_config,
+        )
+        st.session_state[editor_state_key] = edited_df.copy()
+        working_df = assign_missing_ids(pd.DataFrame(edited_df), id_column)
+        if st.button("Save Changes", key=f"{widget_key}_save", type="primary", use_container_width=True):
+            save_fn(working_df[columns])
+            st.cache_data.clear()
+            if columns == PROJECT_COLUMNS:
+                refreshed_df = load_projects()
+            elif columns == DELIVERABLE_COLUMNS:
+                refreshed_df = load_deliverables()
+            else:
+                refreshed_df = load_allocations()
+            set_editor_state(editor_state_key, widget_key, refreshed_df)
+            st.success(f"{title} saved.")
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def build_deliverable_metrics(deliverables_df: pd.DataFrame, projects_df: pd.DataFrame, today_value: date) -> pd.DataFrame:
@@ -499,66 +588,128 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-kpi_cols = st.columns(6, gap="medium")
-with kpi_cols[0]:
-    render_kpi("Projects", str(int(filtered_projects_rollup["project_id"].nunique()) if not filtered_projects_rollup.empty else 0), "Initiatives in the current filtered plan")
-with kpi_cols[1]:
-    render_kpi("Deliverables", str(int(filtered_deliverables["deliverable_id"].nunique()) if not filtered_deliverables.empty else 0), "Schedulable work units in scope")
-with kpi_cols[2]:
-    render_kpi("Required Weekly Hours", format_hours(weekly_required_hours), "Weekly demand implied by planned deliverable dates")
-with kpi_cols[3]:
-    render_kpi("Effective Capacity", format_hours(weekly_effective_capacity), "Weekly capacity after hypercare/support contingency")
-with kpi_cols[4]:
-    render_kpi("Estimated FTE Gap", f"{estimated_fte_gap:.2f}", "Additional capacity needed to hold dates")
-with kpi_cols[5]:
-    render_kpi("Projects Likely to Slip", str(projects_likely_to_slip), "Projects expected to extend under current constraints")
+dashboard_tab, projects_tab, deliverables_tab, allocations_tab = st.tabs(["Dashboard", "Projects", "Deliverables", "Allocations"])
 
-summary_text = "Current portfolio is feasible as planned." if weekly_overage <= 0 and projects_likely_to_slip == 0 else f"Current portfolio is constrained by {int((filtered_capacity_summary['status'] == 'Overallocated').sum()) if not filtered_capacity_summary.empty else 0} overloaded resource(s), {format_hours(weekly_overage)} of weekly overage, and {projects_likely_to_slip} project(s) likely to slip."
-st.markdown(f'<div class="banner"><div class="banner-title">Executive Portfolio Readout</div><div class="banner-body">{escape(summary_text)}</div></div>', unsafe_allow_html=True)
+render_table_editor(
+    projects_tab,
+    title="Projects",
+    editor_state_key="projects_editor_data",
+    widget_key="projects_editor",
+    df=projects_df,
+    columns=PROJECT_COLUMNS,
+    id_column="project_id",
+    save_fn=save_projects,
+    column_config={
+        "project_id": st.column_config.NumberColumn("Project ID", disabled=True, width="small"),
+        "project_name": st.column_config.TextColumn("Project", width="large"),
+        "owner": st.column_config.TextColumn("Owner", width="medium"),
+        "priority": st.column_config.SelectboxColumn("Priority", options=["High", "Medium", "Low"], width="small"),
+        "status": st.column_config.TextColumn("Status", width="medium"),
+        "notes": st.column_config.TextColumn("Notes", width="large"),
+    },
+)
 
-st.markdown('<div class="section-label">Planned Deliverable Timeline</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Read-only timeline view built from the current deliverable schedule data.</div>', unsafe_allow_html=True)
-st.markdown('<div class="panel">', unsafe_allow_html=True)
-if filtered_timeline.empty:
-    st.info("No deliverables match the current filters.")
-else:
-    st.plotly_chart(build_timeline_figure(filtered_timeline, checkpoint_date), width="stretch")
-    timeline_table = filtered_timeline.copy()
-    timeline_table["start_date"] = pd.to_datetime(timeline_table["start_date"]).dt.strftime("%Y-%m-%d").fillna("")
-    timeline_table["planned_end_date"] = pd.to_datetime(timeline_table["planned_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
-    timeline_table["realistic_end_date"] = pd.to_datetime(timeline_table["realistic_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
-    st.dataframe(timeline_table[["project_name", "deliverable_name", "owner", "priority", "status", "start_date", "planned_end_date", "realistic_end_date", "delay_days"]], width="stretch", height=260, hide_index=True)
-st.markdown("</div>", unsafe_allow_html=True)
+render_table_editor(
+    deliverables_tab,
+    title="Deliverables",
+    editor_state_key="deliverables_editor_data",
+    widget_key="deliverables_editor",
+    df=deliverables_df,
+    columns=DELIVERABLE_COLUMNS,
+    id_column="deliverable_id",
+    save_fn=save_deliverables,
+    column_config={
+        "deliverable_id": st.column_config.NumberColumn("Deliverable ID", disabled=True, width="small"),
+        "project_id": st.column_config.NumberColumn("Project ID", width="small"),
+        "deliverable_name": st.column_config.TextColumn("Deliverable", width="large"),
+        "start_date": st.column_config.DateColumn("Start", format="YYYY-MM-DD", width="medium"),
+        "end_date": st.column_config.DateColumn("End", format="YYYY-MM-DD", width="medium"),
+        "status": st.column_config.TextColumn("Status", width="medium"),
+        "priority": st.column_config.SelectboxColumn("Priority", options=["High", "Medium", "Low"], width="small"),
+        "delivery_mode": st.column_config.TextColumn("Delivery Mode", width="medium"),
+        "protected_delivery": st.column_config.TextColumn("Protected Delivery", width="medium"),
+        "notes": st.column_config.TextColumn("Notes", width="large"),
+    },
+)
 
-st.markdown('<div class="section-label">Project Rollup Summary</div>', unsafe_allow_html=True)
-st.markdown('<div class="panel">', unsafe_allow_html=True)
-if filtered_projects_rollup.empty:
-    st.info("No project rollups match the current filters.")
-else:
-    project_display = filtered_projects_rollup.copy()
-    project_display["total_remaining_hours"] = project_display["total_remaining_hours"].map(format_hours)
-    project_display["required_weekly_hours"] = project_display["required_weekly_hours"].map(format_hours)
-    project_display["planned_end_date"] = pd.to_datetime(project_display["planned_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
-    project_display["realistic_end_date"] = pd.to_datetime(project_display["realistic_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
-    st.dataframe(project_display[["project_name", "owner", "priority", "status", "deliverable_count", "active_deliverables", "total_remaining_hours", "required_weekly_hours", "planned_end_date", "realistic_end_date", "delay_days", "constrained_resources", "risk_status"]], width="stretch", height=360, hide_index=True)
-st.markdown("</div>", unsafe_allow_html=True)
+render_table_editor(
+    allocations_tab,
+    title="Allocations",
+    editor_state_key="allocations_editor_data",
+    widget_key="allocations_editor",
+    df=allocations_df,
+    columns=ALLOCATION_COLUMNS,
+    id_column="allocation_id",
+    save_fn=save_allocations,
+    column_config={
+        "allocation_id": st.column_config.NumberColumn("Allocation ID", disabled=True, width="small"),
+        "deliverable_id": st.column_config.NumberColumn("Deliverable ID", width="small"),
+        "resource_name": st.column_config.TextColumn("Resource", width="medium"),
+        "allocation_pct": st.column_config.NumberColumn("Allocation %", min_value=0.0, step=0.05, format="%.2f", width="small"),
+    },
+)
 
-st.markdown('<div class="section-label">Resource Capacity Summary</div>', unsafe_allow_html=True)
-st.markdown('<div class="panel">', unsafe_allow_html=True)
-if filtered_capacity_summary.empty:
-    st.info("No resource allocations match the current filters.")
-else:
-    capacity_display = filtered_capacity_summary.copy()
-    capacity_display["allocated_remaining_hours"] = capacity_display["allocated_remaining_hours"].map(format_hours)
-    capacity_display["required_weekly_hours"] = capacity_display["required_weekly_hours"].map(format_hours)
-    capacity_display["effective_weekly_capacity"] = capacity_display["effective_weekly_capacity"].map(format_hours)
-    capacity_display["weekly_load_pct"] = capacity_display["weekly_load_pct"].map(format_pct)
-    st.dataframe(capacity_display[["resource_name", "active_deliverables", "allocated_remaining_hours", "required_weekly_hours", "effective_weekly_capacity", "weekly_load_pct", "status", "project_list"]], width="stretch", height=300, hide_index=True)
-st.markdown("</div>", unsafe_allow_html=True)
+with dashboard_tab:
+    kpi_cols = st.columns(6, gap="medium")
+    with kpi_cols[0]:
+        render_kpi("Projects", str(int(filtered_projects_rollup["project_id"].nunique()) if not filtered_projects_rollup.empty else 0), "Initiatives in the current filtered plan")
+    with kpi_cols[1]:
+        render_kpi("Deliverables", str(int(filtered_deliverables["deliverable_id"].nunique()) if not filtered_deliverables.empty else 0), "Schedulable work units in scope")
+    with kpi_cols[2]:
+        render_kpi("Required Weekly Hours", format_hours(weekly_required_hours), "Weekly demand implied by planned deliverable dates")
+    with kpi_cols[3]:
+        render_kpi("Effective Capacity", format_hours(weekly_effective_capacity), "Weekly capacity after hypercare/support contingency")
+    with kpi_cols[4]:
+        render_kpi("Estimated FTE Gap", f"{estimated_fte_gap:.2f}", "Additional capacity needed to hold dates")
+    with kpi_cols[5]:
+        render_kpi("Projects Likely to Slip", str(projects_likely_to_slip), "Projects expected to extend under current constraints")
 
-with st.expander("Implementation Notes", expanded=False):
-    st.markdown(
-        """
+    summary_text = "Current portfolio is feasible as planned." if weekly_overage <= 0 and projects_likely_to_slip == 0 else f"Current portfolio is constrained by {int((filtered_capacity_summary['status'] == 'Overallocated').sum()) if not filtered_capacity_summary.empty else 0} overloaded resource(s), {format_hours(weekly_overage)} of weekly overage, and {projects_likely_to_slip} project(s) likely to slip."
+    st.markdown(f'<div class="banner"><div class="banner-title">Executive Portfolio Readout</div><div class="banner-body">{escape(summary_text)}</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-label">Planned Deliverable Timeline</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Read-only timeline view built from the current deliverable schedule data.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    if filtered_timeline.empty:
+        st.info("No deliverables match the current filters.")
+    else:
+        st.plotly_chart(build_timeline_figure(filtered_timeline, checkpoint_date), width="stretch")
+        timeline_table = filtered_timeline.copy()
+        timeline_table["start_date"] = pd.to_datetime(timeline_table["start_date"]).dt.strftime("%Y-%m-%d").fillna("")
+        timeline_table["planned_end_date"] = pd.to_datetime(timeline_table["planned_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
+        timeline_table["realistic_end_date"] = pd.to_datetime(timeline_table["realistic_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
+        st.dataframe(timeline_table[["project_name", "deliverable_name", "owner", "priority", "status", "start_date", "planned_end_date", "realistic_end_date", "delay_days"]], width="stretch", height=260, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-label">Project Rollup Summary</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    if filtered_projects_rollup.empty:
+        st.info("No project rollups match the current filters.")
+    else:
+        project_display = filtered_projects_rollup.copy()
+        project_display["total_remaining_hours"] = project_display["total_remaining_hours"].map(format_hours)
+        project_display["required_weekly_hours"] = project_display["required_weekly_hours"].map(format_hours)
+        project_display["planned_end_date"] = pd.to_datetime(project_display["planned_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
+        project_display["realistic_end_date"] = pd.to_datetime(project_display["realistic_end_date"]).dt.strftime("%Y-%m-%d").fillna("")
+        st.dataframe(project_display[["project_name", "owner", "priority", "status", "deliverable_count", "active_deliverables", "total_remaining_hours", "required_weekly_hours", "planned_end_date", "realistic_end_date", "delay_days", "constrained_resources", "risk_status"]], width="stretch", height=360, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-label">Resource Capacity Summary</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    if filtered_capacity_summary.empty:
+        st.info("No resource allocations match the current filters.")
+    else:
+        capacity_display = filtered_capacity_summary.copy()
+        capacity_display["allocated_remaining_hours"] = capacity_display["allocated_remaining_hours"].map(format_hours)
+        capacity_display["required_weekly_hours"] = capacity_display["required_weekly_hours"].map(format_hours)
+        capacity_display["effective_weekly_capacity"] = capacity_display["effective_weekly_capacity"].map(format_hours)
+        capacity_display["weekly_load_pct"] = capacity_display["weekly_load_pct"].map(format_pct)
+        st.dataframe(capacity_display[["resource_name", "active_deliverables", "allocated_remaining_hours", "required_weekly_hours", "effective_weekly_capacity", "weekly_load_pct", "status", "project_list"]], width="stretch", height=300, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.expander("Implementation Notes", expanded=False):
+        st.markdown(
+            """
 Current implementation:
 - Deliverables are the schedulable units.
 - Projects remain parent containers with project-level rollups.
@@ -567,8 +718,8 @@ Current implementation:
 - Planning Controls sidebar, KPI cards, executive readout, deliverable timeline section, and project rollup summary are all present.
 
 Intentional scope:
-- The app is focused on read-only analysis of the existing CSV-backed plan.
+- The dashboard remains focused on analysis of the existing CSV-backed plan.
 - The timeline is presented as a stable Plotly view.
-- The app does not include inline management tooling from the archived legacy version.
-        """
-    )
+- Management changes are made through the dedicated Projects, Deliverables, and Allocations tabs.
+            """
+        )

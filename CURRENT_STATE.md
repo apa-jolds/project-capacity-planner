@@ -15,11 +15,12 @@
 - The app launches as a Streamlit dashboard from `app.py`
 - Projects, deliverables, and allocations are loaded directly from CSV files
 - Portfolio feasibility KPIs are calculated from deliverable dates, allocations, and contingency
-- Filterable deliverable timeline renders as a read-only Plotly view
+- Filterable deliverable timeline renders as a Plotly view
 - Project rollup summary estimates realistic end dates and likely slip from deliverable data
 - Resource capacity summary identifies overloaded, near-capacity, and available resources
 - Staffing insight estimates weekly overage and FTE gap
 - Sidebar filters scope the dashboard by project, deliverable, resource, owner, priority, and status
+- Projects, Deliverables, and Allocations can be edited in dedicated management tabs and saved back to CSV
 
 ## Current Data Shape
 
@@ -34,12 +35,12 @@
 - Deleting `app_legacy.py`
 - Changing CSV schemas
 - Introducing new planning features beyond the current standardized app
-- Changing the current read-only timeline approach without explicit approval
+- Changing the current dashboard timeline approach without explicit approval
 
 ## Current Priorities
 
 1. Keep `app.py` stable as the primary application
-2. Preserve the current deliverable-centric behavior and read-only timeline
+2. Preserve the current deliverable-centric behavior and dashboard timeline
 3. Make the repo state understandable for future edits
 4. Avoid accidental changes to `app_legacy.py` unless a task explicitly requires it
 5. Keep documentation aligned with the standardized app structure
